@@ -117,7 +117,7 @@ def create_app(test_config=None):
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:"
         response.headers['Referrer-Policy'] = 'no-referrer'
         return response
 
@@ -153,13 +153,13 @@ def create_app(test_config=None):
                 session.clear()
                 session.update(admin=username, csrf=secrets.token_hex(24))
                 session.permanent = True
-                return redirect('/')
+                return redirect('/admin')
             db().execute("INSERT INTO failures VALUES(?,1,unixepoch()+900) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN until<=unixepoch() THEN 1 ELSE attempts+1 END,until=CASE WHEN until<=unixepoch() THEN unixepoch()+900 ELSE until END", (key,))
             db().commit()
             error = '用户名或密码错误'
         return render_template('login.html', error=error)
 
-    @app.get('/')
+    @app.get('/admin')
     @admin
     def index():
         return render_template('index.html', pattern=app.config['STUDENT_ID_PATTERN'])
@@ -216,7 +216,7 @@ def create_app(test_config=None):
         expire()
         queries = {
             'lockers': 'SELECT l.*,s.name,s.phone FROM lockers l LEFT JOIN students s ON s.id=l.student_id ORDER BY l.id',
-            'students': 'SELECT s.*,EXISTS(SELECT 1 FROM authorized a WHERE a.student_id=s.id) AS authorized,COUNT(u.id) AS uses FROM students s LEFT JOIN usage u ON u.student_id=s.id GROUP BY s.id ORDER BY uses DESC,s.id',
+            'students': 'SELECT s.*,EXISTS(SELECT 1 FROM authorized a WHERE a.student_id=s.id) AS authorized,EXISTS(SELECT 1 FROM campus_cards a WHERE a.student_id=s.id) AS card_bound,COUNT(u.id) AS uses FROM students s LEFT JOIN usage u ON u.student_id=s.id GROUP BY s.id ORDER BY uses DESC,s.id',
             'usage': 'SELECT u.*,l.label,s.name FROM usage u JOIN lockers l ON l.id=u.locker_id JOIN students s ON s.id=u.student_id ORDER BY u.id DESC',
             'commands': 'SELECT c.*,l.label FROM commands c JOIN lockers l ON l.id=c.locker_id ORDER BY c.created DESC',
             'audit': 'SELECT * FROM audit ORDER BY id DESC LIMIT 500'
@@ -235,6 +235,7 @@ def create_app(test_config=None):
             db().execute('INSERT OR IGNORE INTO authorized VALUES(?)', (sid,))
         else:
             db().execute('DELETE FROM authorized WHERE student_id=?', (sid,))
+            db().execute('UPDATE student_access SET version=version+1 WHERE student_id=?', (sid,))
         audit(session['admin'], 'student_save', sid)
         db().commit()
         return jsonify(ok=True)
@@ -480,4 +481,6 @@ def create_app(test_config=None):
         db().commit()
         click.echo('密码已更新；请轮换 SECRET_KEY 撤销现有会话')
 
+    from student_portal import register_student_portal
+    register_student_portal(app, db, admin, audit, data, expire, token('DEVICE_TOKEN'))
     return app

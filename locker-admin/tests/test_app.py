@@ -34,7 +34,8 @@ def test_auth_csrf_and_separate_tokens(setup):
     assert other.post('/api/lockers/1/command',json={}).status_code==401
     assert c.post('/api/lockers',json={'label':'X'}).status_code==403
     assert c.get('/api/device/commands',headers={'Authorization':'Bearer ingest-test'}).status_code==401
-    assert other.get('/').status_code==302
+    assert other.get('/').status_code==200
+    assert other.get('/admin').status_code==302
     assert c.get('/').status_code==200
 
 def test_external_ingest_does_not_authorize(setup):
