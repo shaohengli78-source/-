@@ -1,0 +1,7 @@
+.git
+.env
+instance
+*.sqlite3*
+__pycache__
+.pytest_cache
+.venv
